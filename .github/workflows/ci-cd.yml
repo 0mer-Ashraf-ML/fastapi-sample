@@ -23,27 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: List Files for Debugging
-        run: |
-          ls -la  # List the files and directories to check if 'app' exists
-
-      - name: List All Files Recursively
-        run: |
-          echo "Listing files recursively..."
-          ls -R  # List all files in the repository recursively to confirm the location of the 'app' directory
-
-      - name: Copy files to EC2
-        env:
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-        run: |
-          echo "$EC2_SSH_KEY" > private_key.pem
-          chmod 400 private_key.pem
-          # Ensure to update the path to the actual directory
-          scp -i private_key.pem -o StrictHostKeyChecking=no -r ./src/app ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/
-
-      - name: SSH into EC2 and run the app
+      - name: SSH into EC2 and clone repository
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -52,10 +32,21 @@ jobs:
           echo "$EC2_SSH_KEY" > private_key.pem
           chmod 400 private_key.pem
           ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
-            sudo yum update -y
-            sudo yum install python3 -y
-            cd /home/ec2-user/app  # Ensure this is the correct path
-            git pull origin main  # Ensure you're working with the latest code
-            pip3 install -r requirements.txt  # Install dependencies
-            nohup uvicorn main:app --host 0.0.0.0 --port 8080 &  # Start the FastAPI app
+            # Navigate to the home directory or any other directory where you want to clone the repo
+            cd /home/ec2-user
+
+            # If there's already a project folder, clean it up
+            rm -rf app
+
+            # Clone the repository directly onto the EC2 instance
+            git clone https://github.com/${{ github.repository }} app
+
+            # Navigate to the cloned project directory
+            cd app
+
+            # Install any new dependencies
+            pip install -r requirements.txt
+
+            # Start the FastAPI app
+            nohup uvicorn main:app --host 0.0.0.0 --port 8080 &
           EOF
