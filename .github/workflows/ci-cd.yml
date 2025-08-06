@@ -95,14 +95,14 @@ jobs:
           export PYTHONPATH=/home/ec2-user/fastapi-app
           
           # Start the application with nohup (runs in background)
-          nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload > app.log 2>&1 &
+          nohup python3 -m uvicorn main:app --host 127.0.0.1 --port 8080 --reload > app.log 2>&1 &
           
           # Wait a moment and check if app started successfully
           sleep 5
           if pgrep -f "uvicorn.*main:app"; then
             echo "FastAPI application started successfully!"
             # Test if application is responding
-            curl -f http://localhost:8080/health || echo "Health check failed"
+            curl -f http://127.0.0.1:8080/health || echo "Health check failed"
           else
             echo "Failed to start FastAPI application"
             cat app.log
