@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -27,6 +27,11 @@ jobs:
         run: |
           ls -la  # List the files and directories to check if 'app' exists
 
+      - name: List All Files Recursively
+        run: |
+          echo "Listing files recursively..."
+          ls -R  # List all files in the repository recursively to confirm the location of the 'app' directory
+
       - name: Copy files to EC2
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
@@ -35,8 +40,8 @@ jobs:
         run: |
           echo "$EC2_SSH_KEY" > private_key.pem
           chmod 400 private_key.pem
-          # Use the correct path if 'app' is in a different folder
-          scp -i private_key.pem -o StrictHostKeyChecking=no -r ./src/app ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/  # Adjust path here
+          # Ensure to update the path to the actual directory
+          scp -i private_key.pem -o StrictHostKeyChecking=no -r ./src/app ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/
 
       - name: SSH into EC2 and run the app
         env:
