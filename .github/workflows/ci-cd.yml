@@ -2,7 +2,9 @@ name: Deploy FastAPI to AWS EC2
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
   lint-and-validate:
@@ -11,10 +13,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.11
+    - name: Set up Python 3.9
       uses: actions/setup-python@v4
       with:
-        python-version: 3.11
+        python-version: 3.9
     
     - name: Cache pip dependencies
       uses: actions/cache@v3
@@ -45,7 +47,7 @@ jobs:
   deploy:
     needs: lint-and-validate
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
     steps:
     - uses: actions/checkout@v4
@@ -57,65 +59,99 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         port: 22
+        timeout: 300s
+        command_timeout: 10m
         script: |
+          set -e  # Exit on any error
+          
+          echo "🚀 Starting deployment process..."
+          
           # Navigate to home directory first
           cd /home/ec2-user
+          echo "📁 Current directory: $(pwd)"
           
-          # Navigate to application directory
-          cd fastapi-app || { echo "Directory not found, creating..."; mkdir -p fastapi-app; cd fastapi-app; }
+          # Create and navigate to application directory
+          if [ ! -d "fastapi-app" ]; then
+            echo "📁 Creating fastapi-app directory..."
+            mkdir -p fastapi-app
+          fi
+          cd fastapi-app
+          echo "📁 Application directory: $(pwd)"
           
           # Stop existing application
-          sudo pkill -f "python.*main.py" || echo "No existing process found"
-          sudo pkill -f "uvicorn.*main:app" || echo "No existing uvicorn process found"
+          echo "🛑 Stopping existing processes..."
+          sudo pkill -f "uvicorn" || echo "No uvicorn processes found"
+          sudo pkill -f "python.*main" || echo "No python main processes found"
           
-          # Update system packages
-          sudo yum update -y
+          # Install git if not available
+          echo "📦 Installing git..."
+          sudo yum install git -y > /dev/null 2>&1 || echo "Git already installed"
           
-          # Install Python 3.11+ if not installed
-          python3 --version || sudo yum install python3 python3-pip -y
-          
-          # Clone or pull latest code
+          # Clone or update repository
           if [ -d ".git" ]; then
-            echo "Git repository found, updating..."
-            git pull origin main
+            echo "🔄 Updating existing repository..."
+            git pull origin main || {
+              echo "Git pull failed, doing fresh clone..."
+              cd ..
+              rm -rf fastapi-app
+              mkdir fastapi-app
+              cd fastapi-app
+              git clone https://github.com/0mer-Ashraf-ML/fastapi-sample .
+            }
           else
-            echo "Cloning repository..."
+            echo "📥 Cloning repository..."
             git clone https://github.com/0mer-Ashraf-ML/fastapi-sample .
           fi
           
-          # Create virtual environment if it doesn't exist
-          if [ ! -d "venv" ]; then
-            echo "Creating virtual environment..."
-            python3 -m venv venv
-          fi
+          # Verify files
+          echo "📋 Files in directory:"
+          ls -la
           
-          # Activate virtual environment and install dependencies
-          echo "Installing dependencies..."
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          
-          # Set environment variables
-          export PORT=8080
-          export PYTHONPATH=/home/ec2-user/fastapi-app
-          
-          # Start the application with nohup (runs in background)
-          echo "Starting FastAPI application..."
-          nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload > app.log 2>&1 &
-          
-          # Wait a moment and check if app started successfully
-          sleep 10
-          if pgrep -f "uvicorn.*main:app"; then
-            echo "✅ FastAPI application started successfully!"
-            # Test if application is responding
-            curl -f http://localhost:8080/health && echo "✅ Health check passed" || echo "❌ Health check failed"
-          else
-            echo "❌ Failed to start FastAPI application"
-            echo "Checking logs..."
-            cat app.log
+          # Check if main.py exists
+          if [ ! -f "main.py" ]; then
+            echo "❌ main.py not found!"
             exit 1
           fi
           
-          # Display running processes
-          echo "Current running processes:"
-          ps aux | grep uvicorn | grep -v grep || echo "No uvicorn processes found"
+          # Install Python packages
+          echo "🐍 Installing Python..."
+          sudo yum update -y > /dev/null 2>&1
+          sudo yum install python3 python3-pip -y > /dev/null 2>&1
+          
+          # Create virtual environment
+          echo "🏗️ Setting up virtual environment..."
+          if [ ! -d "venv" ]; then
+            python3 -m venv venv
+          fi
+          
+          # Activate and install dependencies
+          echo "📦 Installing dependencies..."
+          source venv/bin/activate
+          pip install --upgrade pip > /dev/null 2>&1
+          pip install -r requirements.txt > /dev/null 2>&1
+          
+          # Start application
+          echo "🚀 Starting FastAPI application..."
+          export PORT=8080
+          nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 > app.log 2>&1 &
+          
+          # Wait and verify
+          echo "⏳ Waiting for application to start..."
+          sleep 15
+          
+          if pgrep -f "uvicorn" > /dev/null; then
+            echo "✅ Application started successfully!"
+            echo "🌐 Testing health endpoint..."
+            if curl -s http://localhost:8080/health; then
+              echo "✅ Health check passed!"
+            else
+              echo "⚠️ Health check failed but app is running"
+            fi
+          else
+            echo "❌ Application failed to start!"
+            echo "📋 Application logs:"
+            cat app.log || echo "No log file found"
+            exit 1
+          fi
+          
+          echo "🎉 Deployment completed successfully!"
