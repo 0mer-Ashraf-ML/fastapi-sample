@@ -70,7 +70,7 @@ jobs:
           cd fastapi-app
 
           echo "🛑 Stopping existing FastAPI app if running..."
-          pkill -f "uvicorn" || echo "No uvicorn process found"
+          pkill -f "uvicorn" || true
 
           if [ ! -d ".git" ]; then
             echo "📥 Cloning repository..."
