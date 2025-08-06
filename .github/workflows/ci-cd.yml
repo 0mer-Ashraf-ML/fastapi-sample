@@ -23,6 +23,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: List Files for Debugging
+        run: |
+          ls -la  # Debugging step to check if 'app' exists
+
       - name: Copy files to EC2
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
@@ -31,8 +35,12 @@ jobs:
         run: |
           echo "$EC2_SSH_KEY" > private_key.pem
           chmod 400 private_key.pem
-          # Use the correct path if 'app' is located in a different directory
-          scp -i private_key.pem -o StrictHostKeyChecking=no -r ./app ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/
+          # Ensure the target directory exists, create if not
+          ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+            mkdir -p /home/ec2-user/app  # Create the 'app' directory if it doesn't exist
+          EOF
+          # Now copy the app directory from the GitHub Actions runner to EC2
+          scp -i private_key.pem -o StrictHostKeyChecking=no -r ./app ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/app/
 
       - name: SSH into EC2 and run the app
         env:
@@ -46,7 +54,7 @@ jobs:
             sudo yum update -y
             sudo yum install python3 -y
             cd /home/ec2-user/app
-            git pull origin main
-            pip3 install -r requirements.txt
-            nohup uvicorn main:app --host 0.0.0.0 --port 8080 &
+            git pull origin main  # Ensure you're working with the latest code
+            pip3 install -r requirements.txt  # Install dependencies
+            nohup uvicorn main:app --host 0.0.0.0 --port 8080 &  # Start the FastAPI app
           EOF
