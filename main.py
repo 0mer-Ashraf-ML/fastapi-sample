@@ -13,7 +13,7 @@ app = FastAPI(
 
 @app.get("/")
 async def root():
-    return {"message": "Hello FastAPI!", "status": "running"}
+    return {"message": "Hi Bro what's up!", "status": "running"}
 
 @app.get("/health")
 async def health_check():
