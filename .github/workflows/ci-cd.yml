@@ -96,11 +96,11 @@ jobs:
               rm -rf fastapi-app
               mkdir fastapi-app
               cd fastapi-app
-              git clone https://github.com/0mer-Ashraf-ML/fastapi-sample .
+              git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .
             }
           else
             echo "📥 Cloning repository..."
-            git clone https://github.com/0mer-Ashraf-ML/fastapi-sample .
+                          git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .
           fi
           
           # Verify files
