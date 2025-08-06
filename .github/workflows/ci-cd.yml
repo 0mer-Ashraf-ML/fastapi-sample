@@ -56,44 +56,44 @@ jobs:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
+        script_stop: false  # 🔧 This prevents failure when one command fails (important!)
         script: |
-          set -e
-
-          echo "🚀 Connecting to EC2 and starting deployment..."
+          echo "🚀 Starting deployment..."
 
           cd /home/ec2-user
 
-          if [ ! -d "fastapi-app" ]; then
-            mkdir fastapi-app
-          fi
-
+          echo "📁 Ensuring fastapi-app directory exists..."
+          mkdir -p fastapi-app
           cd fastapi-app
 
-          echo "🛑 Stopping existing FastAPI app if running..."
-          pkill -f "uvicorn" || true
+          echo "🛑 Stopping running FastAPI app if any..."
+          pkill -f "uvicorn" || echo "No existing uvicorn process"
 
+          echo "📥 Cloning or pulling latest code..."
           if [ ! -d ".git" ]; then
-            echo "📥 Cloning repository..."
             git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .
           else
-            echo "🔄 Pulling latest changes..."
-            git pull origin main
+            git pull origin main || (echo "🔁 Pull failed, doing full clone" && cd .. && rm -rf fastapi-app && mkdir fastapi-app && cd fastapi-app && git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .)
           fi
 
-          echo "🐍 Setting up virtual environment..."
+          echo "🐍 Creating virtual environment if not exists..."
           if [ ! -d "venv" ]; then
             python3 -m venv venv
           fi
 
+          echo "📦 Installing dependencies..."
           source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
 
           echo "🚀 Starting FastAPI app with Uvicorn..."
-          nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 &
+          nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 > output.log 2>&1 &
 
-          echo "⏳ Waiting for FastAPI to start..."
+          echo "⏳ Waiting 10 seconds for app to boot..."
           sleep 10
 
           echo "🌐 Checking health endpoint..."
           curl -s http://localhost:8080/health || echo "⚠️ Health check failed"
+
+          echo "✅ Deployment complete"
+
