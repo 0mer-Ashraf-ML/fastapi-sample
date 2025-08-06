@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -23,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: SSH into EC2 and clone repository
+      - name: SSH into EC2 and deploy the app
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -32,21 +32,30 @@ jobs:
           echo "$EC2_SSH_KEY" > private_key.pem
           chmod 400 private_key.pem
           ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
-            # Navigate to the home directory or any other directory where you want to clone the repo
+            # Navigate to the directory
             cd /home/ec2-user
 
-            # If there's already a project folder, clean it up
-            rm -rf app
+            # Check if the repository exists
+            if [ -d "app" ]; then
+              # If the directory exists, navigate into it and pull the latest changes
+              cd app
+              git pull origin main
+            else
+              # If the directory does not exist, clone the repository
+              git clone https://github.com/${{ github.repository }} app
+              cd app
+            fi
 
-            # Clone the repository directly onto the EC2 instance
-            git clone https://github.com/${{ github.repository }} app
-
-            # Navigate to the cloned project directory
-            cd app
+            # Kill the old FastAPI app process (if any)
+            pid=$(pgrep -f 'uvicorn main:app')
+            if [ -n "$pid" ]; then
+              echo "Killing old FastAPI process (PID: $pid)"
+              kill -9 $pid
+            fi
 
             # Install any new dependencies
             pip install -r requirements.txt
 
-            # Start the FastAPI app
+            # Start the FastAPI app again with the new changes
             nohup uvicorn main:app --host 0.0.0.0 --port 8080 &
           EOF
