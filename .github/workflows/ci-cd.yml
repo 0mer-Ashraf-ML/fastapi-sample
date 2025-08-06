@@ -100,7 +100,7 @@ jobs:
             }
           else
             echo "📥 Cloning repository..."
-                          git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .
+            git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .
           fi
           
           # Verify files
