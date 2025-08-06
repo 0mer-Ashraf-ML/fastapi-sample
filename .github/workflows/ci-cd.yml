@@ -1,99 +1,51 @@
-name: Deploy FastAPI to AWS EC2
+name: Deploy FastAPI to EC2
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    branches:
+      - main
 
 jobs:
-  lint-and-validate:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.9
-
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install flake8
-
-    - name: Lint with flake8
-      run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Validate FastAPI app
-      run: |
-        python -c "from main import app; print('✅ FastAPI app imported successfully')"
-
   deploy:
-    needs: lint-and-validate
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-
+    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v2
 
-    - name: Deploy to EC2 via SSH
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script_stop: false  # 🔧 This prevents failure when one command fails (important!)
-        script: |
-          echo "🚀 Starting deployment..."
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
 
-          cd /home/ec2-user
-
-          echo "📁 Ensuring fastapi-app directory exists..."
-          mkdir -p fastapi-app
-          cd fastapi-app
-
-          echo "🛑 Stopping running FastAPI app if any..."
-          pkill -f "uvicorn" || echo "No existing uvicorn process"
-
-          echo "📥 Cloning or pulling latest code..."
-          if [ ! -d ".git" ]; then
-            git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .
-          else
-            git pull origin main || (echo "🔁 Pull failed, doing full clone" && cd .. && rm -rf fastapi-app && mkdir fastapi-app && cd fastapi-app && git clone https://github.com/0mer-Ashraf-ML/fastapi-sample.git .)
-          fi
-
-          echo "🐍 Creating virtual environment if not exists..."
-          if [ ! -d "venv" ]; then
-            python3 -m venv venv
-          fi
-
-          echo "📦 Installing dependencies..."
-          source venv/bin/activate
-          pip install --upgrade pip
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-          echo "🚀 Starting FastAPI app with Uvicorn..."
-          nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 > output.log 2>&1 &
+      - name: Copy files to EC2
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          echo "$EC2_SSH_KEY" > private_key.pem
+          chmod 400 private_key.pem
+          scp -i private_key.pem -o StrictHostKeyChecking=no -r ./app ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/
 
-          echo "⏳ Waiting 10 seconds for app to boot..."
-          sleep 10
-
-          echo "🌐 Checking health endpoint..."
-          curl -s http://localhost:8080/health || echo "⚠️ Health check failed"
-
-          echo "✅ Deployment complete"
-
+      - name: SSH into EC2 and run the app
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          echo "$EC2_SSH_KEY" > private_key.pem
+          chmod 400 private_key.pem
+          ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+            sudo yum update -y
+            sudo yum install python3 -y
+            cd /home/ec2-user/app
+            git pull origin main
+            pip3 install -r requirements.txt
+            nohup uvicorn main:app --host 0.0.0.0 --port 8080 &
+          EOF
